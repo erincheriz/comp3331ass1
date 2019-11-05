@@ -3,6 +3,7 @@
 #coding: utf-8
 from socket import *
 import sys
+import json
 
 #Server would be running on the same host as Client
 serverName = sys.argv[1]
@@ -10,9 +11,16 @@ serverPort = int(sys.argv[2])
 
 clientSocket = socket(AF_INET, SOCK_DGRAM)
 
-message = input("Please type Subscribe\n")
+#message = input("Please type Subscribe\n")
 
-clientSocket.sendto(message.encode(),(serverName, serverPort))
+usr = input("Username: ")
+#pas = input("Password: ")
+
+#message = json.dumps({"username": usr, "password": pas}) #serialise 
+
+print(usr)
+message = "testing"
+#clientSocket.sendto(message.encode(),(serverName, serverPort))
 #wait for the reply from the server
 receivedMessage, serverAddress = clientSocket.recvfrom(2048)
 

@@ -6,6 +6,8 @@ from socket import *
 import threading
 import time
 import datetime as dt
+import sys
+import json
 
 #Server will run on this port
 serverPort = 12000
@@ -15,6 +17,17 @@ clients=[]
 # would communicate with clients after every second
 UPDATE_INTERVAL= 1
 timeout=False
+
+
+
+logins = {}
+with open("credentials.txt") as f:
+    #content = f.readlines()
+    for line in f:
+        tmp = line.split()
+        logins[tmp[0]] = tmp[1]
+#print(logins)
+f.close()
 
 
 def recv_handler():
@@ -27,7 +40,19 @@ def recv_handler():
         
         message, clientAddress = serverSocket.recvfrom(2048)
         #received data from the client, now we know who we are talking with
-        message = message.decode()
+        message = json.loads(message.decode())
+        usr = message.get("username")
+        pas = message.get("password")
+
+        #check if password is in the backend (logins dictionary)
+        if logins.get(usr) != None:
+            #check if the password is right
+            #if logins.get(usr) == pas
+            print("dshfkshfkjhasdkfhks")
+        else:
+            print("Invalid usernmae. Please try again") 
+
+
         #get lock as we might me accessing some shared data structures
         with t_lock:
             currtime = dt.datetime.now()
