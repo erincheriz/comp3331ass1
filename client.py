@@ -19,16 +19,19 @@ def login():
 
 def send(): #send to server
     while True:
-        msg = input('\nMe > ')
-            
-        clientSocket.send(msg)
+        msg = input('\n > ')
+        clientSocket.send(msg.encode())
 
 def receive():
     while True:
-        sen_name = clientSocket.recv(2048)
-        data = clientSocket.recv(2048)
-
-        print('\n' + str(sen_name) + ' > ' + str(data))
+        
+        data = clientSocket.recv(2048).decode()
+        if (data == "LOG_OUT"):
+            #close the socket and end program
+            clientSocket.close()
+            exit()
+        
+        print('\n' + ' > ' + str(data))
 
 
 # python client.py server_IP server_port
@@ -48,33 +51,39 @@ decoded = receivedMessage.decode()
 
 #while the server keeps asking you to login, try logging in
 while ( decoded != "Welcome! You can now start messaging!"):
+        print(decoded)
         if (decoded == "Invalid username. Please try again"):
-            print(decoded)
             login() #login and send to server
         elif (decoded == "Invalid login. Please try again"):
-            print(decoded)
             print("user is "+usr)
             pas = input("Password: ")    
             message = json.dumps({"username": usr, "password": pas})  # serialise
             clientSocket.send(message.encode())
+        elif decoded == "You're already logged in.":
+            clientSocket.close()
+            exit()
         else: #blocked
-            print(decoded)
-            login()
+            login() ##ask them to login again? or just close connection?
         
         #ask for message again
         decoded = clientSocket.recv(2048).decode()
 
 #successfully logged in:
 print("made it here")
-print(receivedMessage.decode())
-#start 2 new threads - one for sending/receiving
+print(decoded)
+
+#start receive new threads - one for sending/receiving
     # send_thread=threading.Thread(name="SendHandler",target=send)
     # send_thread.daemon=True
     # send_thread.start()
 
-    # recv_thread=threading.Thread(name="RecvHandler", target=receive)
-    # recv_thread.daemon=True
-    # recv_thread.start()
+recv_thread=threading.Thread(name="RecvHandler", target=receive)
+recv_thread.daemon=True
+recv_thread.start()
+
+send()
+
+
 #clientSocket.close()
 
     
