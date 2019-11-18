@@ -5,6 +5,7 @@ from socket import *
 import sys
 import json
 import threading
+import os
 
 
 def login():
@@ -16,23 +17,69 @@ def login():
         message = json.dumps({"username": usr, "password": pas})  # serialise
         clientSocket.send(message.encode())
 
+def receivePrivate():
+    #create another main socket that you bind to and listen for
+    #peers who want to PM you
+    privPort = 12000
+    privateSocket = socket(AF_INET, SOCK_STREAM)
+    
+    privateSocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+    #bind it to port 0, which means "any port"
+
+    
+    #once you accept something start a new thread
+
+
+
+    #IDEA????? use same port your using to connect w server????
+
+    #start send thread to private peers
+    # recvThread=threading.Thread(name="RecvHandler", target=receive)
+    # recvThread.daemon=True
+    # recvThread.start()
+
+
+def handlePrivate(peerSocket, addr, usr):
+    while True:
+        print("what")
+
+
+
+
 
 def send(): #send to server
     while True:
         msg = input('\n > ')
         clientSocket.send(msg.encode())
 
+        #if the command is "private" try to 
+            # see if a connection exist w the person
+            # else: "Error. Private messaging to ____ not enabled"
+        #else pass to server
+
 def receive():
     while True:
         
         data = clientSocket.recv(2048).decode()
+        if data[:15] == "approvedPrivate":
+            m = data.split(' ', 3)
+            user = m[1]
+            sock = m[2]
+            port = m[3]
+            #start another thread to talk private
+            print("starting private")
+
         if (data == "LOG_OUT"):
             #close the socket and end program
             clientSocket.close()
-            exit()
+            os._exit(0)
+            #threading.current_thread()._stop
+            #_thread.interrupt_main()
         
         print('\n' + ' > ' + str(data))
 
+
+#START OF THE MAIN PROGRAM HERE
 
 # python client.py server_IP server_port
 # Server would be running on the same host as Client
@@ -42,6 +89,7 @@ serverPort = int(sys.argv[2])
 clientSocket = socket(AF_INET, SOCK_STREAM)
 clientSocket.connect((serverName, serverPort))
 
+p2p = {} #dict of people you currently are private messaging
 
 # first send the login info
 login()
@@ -72,17 +120,19 @@ while ( decoded != "Welcome! You can now start messaging!"):
 print("made it here")
 print(decoded)
 
-#start receive new threads - one for sending/receiving
-    # send_thread=threading.Thread(name="SendHandler",target=send)
-    # send_thread.daemon=True
-    # send_thread.start()
 
-recv_thread=threading.Thread(name="RecvHandler", target=receive)
-recv_thread.daemon=True
-recv_thread.start()
+#start receive thread from private peers
+servePrivate=threading.Thread(name="servePrivate", target=receivePrivate)
+servePrivate.daemon=True
+servePrivate.start()
 
+#start receive thread from server
+recvThread=threading.Thread(name="RecvHandler", target=receive)
+recvThread.daemon=True
+recvThread.start()
+
+# function that sends to server
 send()
-
 
 #clientSocket.close()
 

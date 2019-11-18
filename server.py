@@ -48,11 +48,51 @@ def authenticate(usr, password):
 def handle_request(connectionSocket, addr, usr):
     while True:
         message = connectionSocket.recv(2058).decode()
+        #update the last active time
+        clients[usr]['last_active'] = dt.datetime.now()
 
-        #parse the message
+        #parse the message:
+        
+        #Startprivate <user>
+        if (message[:12] == "startprivate"):
+            m = message.split()
+            other = m[1]
+            
+            #other is self
+            if usr == other:
+                serverMessage = "Error. Cannot message self"
+                connectionSocket.send(serverMessage.encode()) 
+
+            #other doesnt exist
+            elif other not in logins:
+                serverMessage = "Error. Invalid user provided."
+                connectionSocket.send(serverMessage.encode()) 
+
+            #other not online
+            elif other not in clients or clients[other]['online']==False:
+                serverMessage = "Error. Cannot establish a connection with user."
+                connectionSocket.send(serverMessage.encode())
+
+            # other blocked user - server should NOT provide ip and port + give error
+            elif usr in logins[other]['blocked']:
+                serverMessage = "IP and Port number cannot be obtained."
+                connectionSocket.send(serverMessage.encode()) 
+
+            #can connect
+            # Client should obtain IP and port of <user> from server
+            else:
+                sock = clients[other]['socket']
+                port = clients[other]['port']
+
+                #send back the message in format
+                #approvedPrivate <user> <socket> <port>
+                serverMessage = other + " " + sock + " " + port
+                connectionSocket.send(serverMessage.encode())
+
+
 
         #message <user> <message>
-        if (message[:7] == "message"):
+        elif (message[:7] == "message"):
             m = message.split(' ', 2)
             recipient = m[1]
             mess = usr + ": "+ m[2]
@@ -68,7 +108,7 @@ def handle_request(connectionSocket, addr, usr):
                     serverMessage = "You can no longer send messages to this person."
                     connectionSocket.send(serverMessage.encode())
                 #check if they're online - send message to them
-                elif recipient in clients:
+                elif recipient in clients and clients[recipient]['online'] == True:
                     #send message
                     toSend = clients[recipient]['socket']
                     toSend.send(mess.encode())
@@ -88,7 +128,7 @@ def handle_request(connectionSocket, addr, usr):
         elif (message == "whoelse"):  
             serverMessage = ""
             for k in clients:
-                if k != usr:
+                if k != usr and clients[k]['online'] == True:
                     serverMessage = k
                     connectionSocket.send(serverMessage.encode()) 
         
@@ -101,15 +141,16 @@ def handle_request(connectionSocket, addr, usr):
             #if they don't block the current user trying to send - send
             flag = False
             for c in clients:
-                list = logins[c]['blocked']
-                if usr == c:
+                if usr == c: #skip self
                     continue
-                if usr not in list:
+                
+                list = logins[c]['blocked']
+                if usr in list:
+                    flag = True
+                elif clients[c]['online'] == True:
                     toSend = clients[c]['socket']
                     toSend.send(mess.encode())
-                else:
-                    flag = True
-            
+                
             #if the flag is true, that means the message was unable to be sent to all
             #server should send message back
             if flag == True:
@@ -117,11 +158,29 @@ def handle_request(connectionSocket, addr, usr):
                 connectionSocket.send(serverMessage.encode()) 
         
 
-        #whoelsesince <time>
-        if (message[:12] == "whoelsesince"):
+        # #whoelsesince <time> ####
+        elif (message[:12] == "whoelsesince"):
             m = message.split()
-            
+            sec = int(m[1])
 
+            #find the time that you're looking for
+            since_time = dt.datetime.now() - dt.timedelta(seconds=sec)
+
+            #send anyone active since that^ time
+            people = []
+            for p in clients:
+                if p == usr: #skip references of self
+                    continue
+                if clients[p]['last_active'] >= since_time:
+                    #if already sent continue
+                    if p in people:
+                        continue
+                    #else send
+                    else:
+                        people.append(p)
+                        serverMessage = p
+                        connectionSocket.send(serverMessage.encode()) 
+                    
         #block <user>
         elif (message[:5] == "block"):
             m = message.split()
@@ -150,16 +209,20 @@ def handle_request(connectionSocket, addr, usr):
         
         #logout
         elif (message == "logout"):
-            del clients[usr]
+            clients[usr]['online'] = False
             m = usr + " logged out"
             for c in clients:
-                toSend = clients[c]['socket']
-                toSend.send(m.encode())
+                if (clients[c]['online'] == True):
+                    print("true for" + c)
+                    toSend = clients[c]['socket']
+                    toSend.send(m.encode())
+            
             serverMessage = "LOG_OUT"
             connectionSocket.send(serverMessage.encode())
             #just close the socket here? - close the client??
-            #close the thread???
+            #close the thread??? - sys.exit()
             connectionSocket.close()
+            sys.exit() #exit this thread
 
 
         #invalid command
@@ -184,7 +247,7 @@ def ver_new_client(connectionSocket, addr):
         pas = message.get("password")
         
         #check if already logged in or they are blocked coz > 3 tries
-        if usr in clients:
+        if usr in clients and clients[usr]['online']:
             serverMessage = "You're already logged in."
             connectionSocket.send(serverMessage.encode())
             break
@@ -206,21 +269,19 @@ def ver_new_client(connectionSocket, addr):
             #check if the password is right
             if (authenticate(usr, pas) and logins[usr]['tries'] < 3):
                 #correct password
-                print("right")
                 serverMessage = "Welcome! You can now start messaging!"
                 connectionSocket.send(serverMessage.encode())
-                
-                logins[usr]['tries'] = 0
+                print("your port is "+addr)
+
+                logins[usr]['tries'] = 0 #reset their no. of tries
 
                 #client dictionary stores:
-                    # List of people theyve blocked - list
+                    # Boolean - still here
                     # Client socekt
                     # Timeactive
+                    # Login
                 time = dt.datetime.now()
-                clients[usr] = {'socket': connectionSocket, 'last_active': time}
-
-                #add the user to the log_book which stores when people log in
-                log_book[usr] = time
+                clients[usr] = {'online': True, 'socket': connectionSocket, 'port': addr, 'last_active': time, 'login': time}
 
                 #let the other peers know that this client logged in 
                 m = usr + " logged in"
