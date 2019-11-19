@@ -76,7 +76,7 @@ def receive():
             #threading.current_thread()._stop
             #_thread.interrupt_main()
         
-        print('\n' + ' > ' + str(data))
+        print('\n' + str(data))
 
 
 #START OF THE MAIN PROGRAM HERE
@@ -107,12 +107,13 @@ while ( decoded != "Welcome! You can now start messaging!"):
             pas = input("Password: ")    
             message = json.dumps({"username": usr, "password": pas})  # serialise
             clientSocket.send(message.encode())
-        elif decoded == "You're already logged in.":
+        # elif decoded == "You're already logged in.":
+        #     clientSocket.close()
+        #     exit()
+        else: #blocked or "You're already logged in."
             clientSocket.close()
             exit()
-        else: #blocked
-            login() ##ask them to login again? or just close connection?
-        
+
         #ask for message again
         decoded = clientSocket.recv(2048).decode()
 

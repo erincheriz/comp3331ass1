@@ -8,7 +8,7 @@ import time
 import datetime as dt
 import json
 import sys
-
+from queue import Queue 
 
 
 t_lock=threading.Condition()
@@ -33,21 +33,36 @@ with open("credentials.txt") as f:
 f.close()
 
 
-#function to continually log out people if they time out/inactive
-def check_timeout():
-    global timeout
-    while True:
-        for k in clients.items():
-            if dt.datetime.now() - clients[k]['last_active'] >= timeout:
-                print("overtime")
-
-
 def authenticate(usr, password):
     return (logins[usr]['pas'] == password)   
 
+#function to check if the usr is inactive
+def check_timeout():
+    global timeout
+    while True:
+        #look for clients who still online but timed out
+        #for c in clients:
+        for c in list(clients):
+            if clients[c]['online'] == False:
+                continue
+            currT = dt.datetime.now()
+            lastT = clients[c]['last_active']
+            if (currT-lastT).total_seconds() >= timeout:
+                clients[c]['online'] = False
+                clients[c]['last_active'] = dt.datetime.now()
+                serverMessage = "LOG_OUT"
+                sock = clients[c]['socket']
+                sock.send(serverMessage.encode())
+                sock.close()
+            
+
 def handle_request(connectionSocket, addr, usr):
     while True:
-        message = connectionSocket.recv(2058).decode()
+        try: 
+            message = connectionSocket.recv(2058).decode()
+        except OSError: #OSerror if the connection was closed
+            sys.exit()
+        
         #update the last active time
         clients[usr]['last_active'] = dt.datetime.now()
 
@@ -60,22 +75,22 @@ def handle_request(connectionSocket, addr, usr):
             
             #other is self
             if usr == other:
-                serverMessage = "Error. Cannot message self"
+                serverMessage = " > Error. Cannot message self"
                 connectionSocket.send(serverMessage.encode()) 
 
             #other doesnt exist
             elif other not in logins:
-                serverMessage = "Error. Invalid user provided."
+                serverMessage = " > Error. Invalid user provided."
                 connectionSocket.send(serverMessage.encode()) 
 
             #other not online
             elif other not in clients or clients[other]['online']==False:
-                serverMessage = "Error. Cannot establish a connection with user."
+                serverMessage = " > Error. Cannot establish a connection with user."
                 connectionSocket.send(serverMessage.encode())
 
             # other blocked user - server should NOT provide ip and port + give error
             elif usr in logins[other]['blocked']:
-                serverMessage = "IP and Port number cannot be obtained."
+                serverMessage = " > IP and Port number cannot be obtained."
                 connectionSocket.send(serverMessage.encode()) 
 
             #can connect
@@ -95,7 +110,7 @@ def handle_request(connectionSocket, addr, usr):
         elif (message[:7] == "message"):
             m = message.split(' ', 2)
             recipient = m[1]
-            mess = usr + ": "+ m[2]
+            mess = " > " + usr + ": "+ m[2]
 
             print(recipient)
             print(mess)
@@ -105,22 +120,28 @@ def handle_request(connectionSocket, addr, usr):
             if recipient in logins and recipient != usr:
                 #if they're blocked then dont send message
                 if usr in logins[recipient]['blocked']:
-                    serverMessage = "You can no longer send messages to this person."
+                    serverMessage = " > You can no longer send messages to this person."
                     connectionSocket.send(serverMessage.encode())
                 #check if they're online - send message to them
                 elif recipient in clients and clients[recipient]['online'] == True:
                     #send message
                     toSend = clients[recipient]['socket']
                     toSend.send(mess.encode())
-                    print("sent to peer")
+                    
                 #otherwise store the message for them
                 else:
-                    print("saving for peer")
-                    pending_msg[recipient] = [mess]
+                    #if the person already has other pending messages
+                    if recipient in pending_msg:
+                        pending_msg[recipient].append(mess)
+                    #else you're the only pending message
+                    else:
+                        pending_msg[recipient] = [mess]
+                    
+                    
             
             #user doesnt exist or user is self
             else:
-                serverMessage = "Error. Invalid user"   
+                serverMessage = " > Error. Invalid user"   
                 connectionSocket.send(serverMessage.encode()) 
             
 
@@ -129,13 +150,14 @@ def handle_request(connectionSocket, addr, usr):
             serverMessage = ""
             for k in clients:
                 if k != usr and clients[k]['online'] == True:
-                    serverMessage = k
-                    connectionSocket.send(serverMessage.encode()) 
+                    serverMessage += ' > '+ k + '\n'
+
+            connectionSocket.send(serverMessage.encode()) 
         
         #broadcast <message>
         elif (message[:9] == "broadcast"):
             m = message.split(' ', 1)
-            mess = usr + ": " + m[1]
+            mess = " > " + usr + ": " + m[1]
             
             #go through all online people
             #if they don't block the current user trying to send - send
@@ -154,7 +176,7 @@ def handle_request(connectionSocket, addr, usr):
             #if the flag is true, that means the message was unable to be sent to all
             #server should send message back
             if flag == True:
-                serverMessage = "Your message could not be delivered to some recipients"
+                serverMessage = " > Your message could not be delivered to some recipients"
                 connectionSocket.send(serverMessage.encode()) 
         
 
@@ -167,30 +189,32 @@ def handle_request(connectionSocket, addr, usr):
             since_time = dt.datetime.now() - dt.timedelta(seconds=sec)
 
             #send anyone active since that^ time
-            people = []
+            #people = []
             for p in clients:
                 if p == usr: #skip references of self
                     continue
-                if clients[p]['last_active'] >= since_time:
-                    #if already sent continue
-                    if p in people:
-                        continue
-                    #else send
-                    else:
-                        people.append(p)
-                        serverMessage = p
-                        connectionSocket.send(serverMessage.encode()) 
+                
+                if clients[p]['last_active'] >= since_time or clients[p]['online'] == True:
+                    # #if already sent continue
+                    # if p in people:
+                    #     continue
+                    # #else send
+                    # else:
+                    #people.append(p)
+                    serverMessage += ' > ' + p + '\n'
+                    
+            connectionSocket.send(serverMessage.encode()) 
                     
         #block <user>
         elif (message[:5] == "block"):
             m = message.split()
             if m[1] == usr:
-                serverMessage = "Error. Cannot block self"
+                serverMessage = " > Error. Cannot block self"
             elif m[1] not in logins:
-                serverMessage = "Error. Invalid username"
+                serverMessage = " > Error. Invalid username"
             elif m[1] not in logins[usr]['blocked']:
                 logins[usr]['blocked'].append(m[1])
-                serverMessage = m[1]+" is now blocked."
+                serverMessage = " > " + m[1] + " is now blocked."
             
             connectionSocket.send(serverMessage.encode()) 
 
@@ -198,22 +222,22 @@ def handle_request(connectionSocket, addr, usr):
         elif (message[:7] == "unblock"):
             m = message.split()
             if m[1] == usr:
-                serverMessage = "Error. Cannot unblock self"
+                serverMessage = " > Error. Cannot unblock self"
             try:
                 logins[usr]['blocked'].remove(m[1])
-                serverMessage = m[1] + " is unblocked."
+                serverMessage = " > " + m[1] + " is unblocked."
             except ValueError:
-                serverMessage = "Error. "+ m[1] + " was not blocked."
+                serverMessage = " > Error. "+ m[1] + " was not blocked."
             finally:
                 connectionSocket.send(serverMessage.encode()) 
         
         #logout
         elif (message == "logout"):
             clients[usr]['online'] = False
-            m = usr + " logged out"
+            m = " > " + usr + " logged out"
+            # Blocked users also do not get presence notifications 
             for c in clients:
-                if (clients[c]['online'] == True):
-                    print("true for" + c)
+                if clients[c]['online'] == True and usr not in logins[c]['blocked']:
                     toSend = clients[c]['socket']
                     toSend.send(m.encode())
             
@@ -227,7 +251,7 @@ def handle_request(connectionSocket, addr, usr):
 
         #invalid command
         else:
-            serverMessage = "Please type a valid command."
+            serverMessage = " > Please type a valid command."
             connectionSocket.send(serverMessage.encode()) 
             
             
@@ -240,7 +264,7 @@ def ver_new_client(connectionSocket, addr):
 
     while True:
         message = connectionSocket.recv(1024)
-
+        print("blaha")
         #received data from the client, now we know who we are talking with
         message = json.loads(message.decode())
         usr = message.get("username")
@@ -250,14 +274,19 @@ def ver_new_client(connectionSocket, addr):
         if usr in clients and clients[usr]['online']:
             serverMessage = "You're already logged in."
             connectionSocket.send(serverMessage.encode())
-            break
-            #connectionSocket.close()
-            #close thread???
+            #break
+            connectionSocket.close()
+            sys.exit()
+        
         if usr in log_blocked:
             #check if you cant unblock
-            if (dt.datetime.now().time()-log_blocked[usr] < block_duration):
-                serverMessage = serverMessage = "You failed the login too many times, please try again later"
+            currT = dt.datetime.now()
+            log = log_blocked[usr]
+            if (currT-log).total_seconds() < block_duration:
+                serverMessage = "You failed the login too many times, please try again later"
                 connectionSocket.send(serverMessage.encode())
+                connectionSocket.close()
+                sys.exit()
 
             #unblock the user
             else: 
@@ -271,35 +300,27 @@ def ver_new_client(connectionSocket, addr):
                 #correct password
                 serverMessage = "Welcome! You can now start messaging!"
                 connectionSocket.send(serverMessage.encode())
-                print("your port is "+addr)
-
+                
                 logins[usr]['tries'] = 0 #reset their no. of tries
 
                 #client dictionary stores:
-                    # Boolean - still here
-                    # Client socekt
+                    # Boolean - still online
+                    # Client socekt and port
                     # Timeactive
                     # Login
                 time = dt.datetime.now()
                 clients[usr] = {'online': True, 'socket': connectionSocket, 'port': addr, 'last_active': time, 'login': time}
 
                 #let the other peers know that this client logged in 
+                # Blocked users do not get presence notifications 
                 m = usr + " logged in"
                 for c in clients:
-                    if c != usr:
+                    if c == usr:
+                        continue
+                    if clients[c]['online'] == True and usr not in logins[c]['blocked']:
                         toSend = clients[c]['socket']
                         toSend.send(m.encode())
-                        print("sent message to " + c)
-                    
-                #start new threads to send/receive????
-                # recv_thread=threading.Thread(name="RecvHandler", target=recv_handler, args=(connectionSocket, addr, usr))
-                # recv_thread.daemon=True 
-                # recv_thread.start()
-
-                # send_thread=threading.Thread(name="SendHandler",target=send_handler, args=(connectionSocket, addr, usr))
-                # send_thread.daemon=True
-                # send_thread.start()
-
+                
                 #now they logged in, send them any pending messages
                 if usr in pending_msg:
                     for m in pending_msg[usr]:
@@ -315,9 +336,10 @@ def ver_new_client(connectionSocket, addr):
             
             else: #if tries > 3 now block the user
                 serverMessage = "You failed the login too many times, please try again later"
-                log_blocked[usr] = dt.datetime.now().time() #add user to blocked along w the time theyre blocked
+                log_blocked[usr] = dt.datetime.now() 
                 connectionSocket.send(serverMessage.encode())
-                #close the thread
+                connectionSocket.close()
+                sys.exit() #close the thread
             
             connectionSocket.send(serverMessage.encode())
         
@@ -326,76 +348,6 @@ def ver_new_client(connectionSocket, addr):
             serverMessage = "Invalid username. Please try again"
             connectionSocket.send(serverMessage.encode())
     
-
-
-
-
-def recv_handler(connectionSocket, addr, usr):
-    global t_lock
-    global clients
-    
-    global serverSocket
-    print('Server is ready for service')
-    while(1):
-        
-        message = connectionSocket.recv(2048)
-        message = message.decode()
-
-        
-
-        #get lock as we might me accessing some shared data structures
-        with t_lock:
-            #currtime = dt.datetime.now()
-            #date_time = currtime.strftime("%d/%m/%Y, %H:%M:%S")
-            print("receiving from "+usr)
-
-            print("message is " + message)
-
-
-
-            # if(message == 'Subscribe'):
-            #     #store client information (IP and Port No) in list
-            #     clients.append(clientAddress)
-            #     serverMessage="Subscription successfull"
-            # elif(message=='Unsubscribe'):
-            #     #check if client already subscribed or not
-            #     if(clientAddress in clients):
-            #         clients.remove(clientAddress)
-            #         serverMessage="Subscription removed"
-            #     else:
-            #         serverMessage="You are not currently subscribed"
-            # else:
-            serverMessage="Unknown command, send Subscribe or Unsubscribe only"
-            #send message to the client
-            connectionSocket.send(serverMessage.encode())
-            #notify the thread waiting
-            t_lock.notify()
-
-
-def send_handler(connectionSocket, addr, usr):
-    global t_lock
-    global clients
-    
-    global serverSocket
-    global timeout
-    #go through the list of the subscribed clients and send them the current time after every 1 second
-    while(1):
-        #get lock
-        with t_lock:
-            for i in clients:
-                #currtime =dt.datetime.now()
-                #date_time = currtime.strftime("%d/%m/%Y, %H:%M:%S")
-                date_time = "blah"
-                message='Current time is ' + date_time
-                connectionSocket.send(message.encode())
-                print('Sending time to', i[0], 'listening at', i[1], 'at time ', date_time)
-            #notify other thread
-            t_lock.notify()
-        #sleep for UPDATE_INTERVAL
-        time.sleep(UPDATE_INTERVAL)
-
-
-
 #python server.py server_port block_duration timeout
 
 #Server will run on this port
@@ -411,10 +363,12 @@ serverSocket.listen(1)
 print("starting here")
 
 server_start = dt.datetime.now()
-
+#handle timeout
+handle_timeout = threading.Thread(name="Timeout", target=check_timeout)
+handle_timeout.daemon=True
+handle_timeout.start()
 #this is the main thread
 while True:
-    
     #check for client
     connectionSocket, addr = serverSocket.accept()
 
@@ -424,7 +378,6 @@ while True:
     new_client.start()
 
     
-    #handle timeout
-    #check_timeout = thread.Thread(name="Timeout")
+    
 
     #time.sleep(0.1)
