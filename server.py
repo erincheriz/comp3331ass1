@@ -17,7 +17,6 @@ clients={} #dict of online users
 log_blocked={} #dict of users who are currently blocked because failed to login
 logins = {} #dict of all users, passwords, tries and people they block
 pending_msg = {} #dict of users and pending messages to be sent
-log_book = {} #dict of users and when last logged in
 
 # would communicate with clients after every second
 UPDATE_INTERVAL= 1
@@ -66,6 +65,8 @@ def handle_request(connectionSocket, addr, usr):
         #update the last active time
         clients[usr]['last_active'] = dt.datetime.now()
 
+        print("received message from "+usr)
+
         #parse the message:
         
         #Startprivate <user>
@@ -96,12 +97,13 @@ def handle_request(connectionSocket, addr, usr):
             #can connect
             # Client should obtain IP and port of <user> from server
             else:
-                sock = clients[other]['socket']
-                port = clients[other]['port']
+                ip = clients[other]['addr'][0]
+                port = clients[other]['privPort']
 
+                print(usr + " is trying to connect to "+ str(port))
                 #send back the message in format
-                #approvedPrivate <user> <socket> <port>
-                serverMessage = other + " " + sock + " " + port
+                #startPrivateAck <user> <IP> <port>
+                serverMessage = "startPrivateAck " + other + " " + ip + " " + str(port)
                 connectionSocket.send(serverMessage.encode())
 
 
@@ -264,11 +266,11 @@ def ver_new_client(connectionSocket, addr):
 
     while True:
         message = connectionSocket.recv(1024)
-        print("blaha")
         #received data from the client, now we know who we are talking with
         message = json.loads(message.decode())
         usr = message.get("username")
         pas = message.get("password")
+        port = message.get("privPort")
         
         #check if already logged in or they are blocked coz > 3 tries
         if usr in clients and clients[usr]['online']:
@@ -308,9 +310,9 @@ def ver_new_client(connectionSocket, addr):
                     # Client socekt and port
                     # Timeactive
                     # Login
+                    # privPort they can be contacted on
                 time = dt.datetime.now()
-                clients[usr] = {'online': True, 'socket': connectionSocket, 'port': addr, 'last_active': time, 'login': time}
-
+                clients[usr] = {'online': True, 'socket': connectionSocket, 'addr': addr, 'last_active': time, 'login': time, 'privPort': port}
                 #let the other peers know that this client logged in 
                 # Blocked users do not get presence notifications 
                 m = usr + " logged in"
@@ -332,6 +334,7 @@ def ver_new_client(connectionSocket, addr):
             elif logins[usr]['tries'] < 2: #wrong password but havent exhausted tries
                 print("wrong")
                 serverMessage = "Invalid login. Please try again"
+                connectionSocket.send(serverMessage.encode())
                 logins[usr]['tries'] += 1
             
             else: #if tries > 3 now block the user
@@ -341,7 +344,6 @@ def ver_new_client(connectionSocket, addr):
                 connectionSocket.close()
                 sys.exit() #close the thread
             
-            connectionSocket.send(serverMessage.encode())
         
         #username doesnt exist in backend
         else:
@@ -371,7 +373,6 @@ handle_timeout.start()
 while True:
     #check for client
     connectionSocket, addr = serverSocket.accept()
-
     #handle login for each client
     new_client = threading.Thread(name="NewClient", target=ver_new_client, args=(connectionSocket, addr))
     new_client.daemon=True #daemon thread will shut down immediately when program exits
