@@ -19,7 +19,9 @@ def login(port):
         message = json.dumps({"username": usr, "password": pas, "privPort": port})  # serialise
         clientSocket.send(message.encode())
 
-
+def invalid_command(sock):
+    message = " > Please type a valid command."
+    sock.send(message.encode())
 
 #function that listens for private messages 
 def listenPrivate():
@@ -53,7 +55,6 @@ def handlePrivate(peerSocket, addr):
         except OSError: #OSerror if the connection was abruptly closed (stopped private)
             sys.exit()
 
-        print("gone here")
         m = message.split()
         #privateACK <B>
         if m[0] == "privateACK":
@@ -61,14 +62,25 @@ def handlePrivate(peerSocket, addr):
         
         #stopprivate <user> received from a peer
         elif m[0] == "stopprivate":
+            if len(m) != 2:
+                invalid_command(peerSocket)
+            else:
+                peer = m[1]
+                print(" > " + peer + " wishes to discontinue private messaging session.")
+                
+                #find the socket of peer and close
+                sock = p2p[peer]
+                sock.close()
+                del p2p[peer]
+                sys.exit() #close this thread
+
+        #user logged off before executing stop private
+        elif m[0] == "LOGOUT":
             peer = m[1]
-            print(" > " + peer + " wishes to discontinue private messaging session.")
-            
-            #find the socket of peer and close
-            sock = p2p[peer]
-            sock.close()
+            print(peer + " logged out - private messaging disabled.")
+            peerSocket.close()
             del p2p[peer]
-            sys.exit() #close this thread
+            sys.exit()
             
         else:
             print(message)
@@ -93,16 +105,18 @@ def initiatePrivate(peer, ip, port):
 def send(): #send to server or peer
     global usr
     while True:
-        msg = input('\n > ')
+        time.sleep(0.02)
+        msg = input(' > ')
 
         m = msg.split(' ', 1)
         #if the message you sent was "start private" before sending to 
         #server, check that you havent already started a connection w them 
         #by checking p2p
         if m[0] == "startprivate":
-            peer = m[1]
-            if peer in p2p:
-                print("You have already enabled private messaging with " + peer)
+            if len(m) != 2: #name of user not provided
+                print(" > Please type a valid command")
+            elif m[1] in p2p:
+                print(" > You have already enabled private messaging with " + m[1])
             else:
                 clientSocket.send(msg.encode())
 
@@ -110,50 +124,59 @@ def send(): #send to server or peer
         #private <user> <message>
         elif m[0] == "private":
             m = msg.split(' ', 2)
-            peer = m[1]
-            message = " > " + usr + "(private): " + m[2]
-
-            #check if you've established a connection w this peer
-            if peer in p2p:
-                sock = p2p[peer]
-                try:
-                    sock.send(message.encode())
-                except OSError: #catch os error in the case that log off
-                    del p2p[peer]
-                    sock.close()
-                    print("Error. Lost connection to "+peer)
+            if len(m) != 3: #incomplete command
+                print(" > Please type a valid command")
             
-            #otherwise: ERROR
             else:
-                print(" > Error. Private messaging to " + peer + " not enabled")
+                peer = m[1]
+                message = " > " + usr + "(private): " + m[2]
+
+                #check if you've established a connection w this peer
+                if peer in p2p:
+                    sock = p2p[peer]
+                    try:
+                        sock.send(message.encode())
+                    except OSError: #catch os error in case abrupt connection loss
+                        del p2p[peer]
+                        sock.close()
+                        print(" > Error. Lost connection to "+peer)
+                
+                #otherwise: ERROR
+                else:
+                    print(" > Error. Private messaging to " + peer + " not enabled")
         
         #Stopprivate <user> 
         elif m[0] == "stopprivate":
-            peer = m[1]
-            message = "stopprivate "+usr
-            if peer in p2p:
-                sock = p2p[peer]
-                sock.send(message.encode())
-                #close the connection
-                del p2p[peer]
-                sock.close()
+            if len(m) != 2:
+                print(" > Please type a valid command")
+            else: 
+                peer = m[1]
+                message = "stopprivate "+usr
+                if peer in p2p:
+                    sock = p2p[peer]
+                    sock.send(message.encode())
+                    #close the connection
+                    del p2p[peer]
+                    sock.close()
 
-            #error message displayed if no active p2p
-            else:
-                print(" > Error. Private messaging to " + peer + " not enabled")
+                #error message displayed if no active p2p
+                else:
+                    print(" > Error. Private messaging to " + peer + " not enabled")
 
         #other messages sent to server
         else:
             clientSocket.send(msg.encode())
+        
+        time.sleep(0.02)
 
 #receive messages from server
 def receive():
+    global usr
     while True:
         try:
             data = clientSocket.recv(2048)
         
-        #catch OSError - occurs if you've logged out w server but continue talking
-        #with peers in p2p
+        #catch OSError - abrupt logouts
         except OSError: 
             sys.exit() #close receive thread
         
@@ -176,14 +199,19 @@ def receive():
         elif (data == "LOG_OUT"):
             clientSocket.close()
             #if theres ongoing p2p connections message them that youre logging out
-            #for p in p2p:
+            message = "LOGOUT "+usr
+            for p in p2p:
+                sock = p2p[p]
+                sock.send(message.encode())
+                sock.close()
 
             # shut down program
             os._exit(0)
         
         else:
-            time.sleep(0.02)
-            print('\n' + str(data))
+            print(str(data))
+            time.sleep(0.05)
+            
 
 
 #START OF THE MAIN PROGRAM HERE
