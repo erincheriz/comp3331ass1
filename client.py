@@ -6,6 +6,7 @@ import sys
 import json
 import threading
 import os
+import time
 
 p2p = {} #dict of people you currently are private messaging
 
@@ -34,7 +35,6 @@ def listenPrivate():
         peer = m[1]
         #Adds A to list of p2p{usr: peersocket}
         p2p[peer] = connectionSocket
-        print("I added "+peer)
         
         #Sends “privateACK <B>” to A once
         message = "privateACK " + usr
@@ -42,7 +42,7 @@ def listenPrivate():
 
         #make new thread per peer connection 
         newPeerThread = threading.Thread(name="NewPeer", target=handlePrivate, args=(connectionSocket, addr))
-        newPeerThread.daemon=True #daemon thread will shut down immediately when program exits
+        newPeerThread.daemon=True #shut down immediately when program exits
         newPeerThread.start()
 
 #function that handles receiving private messaging        
@@ -50,9 +50,10 @@ def handlePrivate(peerSocket, addr):
     while True:
         try:
             message = peerSocket.recv(2058).decode()
-        except OSError: #OSerror if the connection was abruptly closed
+        except OSError: #OSerror if the connection was abruptly closed (stopped private)
             sys.exit()
 
+        print("gone here")
         m = message.split()
         #privateACK <B>
         if m[0] == "privateACK":
@@ -87,10 +88,7 @@ def initiatePrivate(peer, ip, port):
 
     #add peer to people you're currently talking to
     p2p[peer] = peerSocket
-    print("I added "+peer)
     handlePrivate(peerSocket, addr)
-
-
 
 def send(): #send to server or peer
     global usr
@@ -129,7 +127,6 @@ def send(): #send to server or peer
             else:
                 print(" > Error. Private messaging to " + peer + " not enabled")
         
-        #want to stop 
         #Stopprivate <user> 
         elif m[0] == "stopprivate":
             peer = m[1]
@@ -152,8 +149,15 @@ def send(): #send to server or peer
 #receive messages from server
 def receive():
     while True:
+        try:
+            data = clientSocket.recv(2048)
         
-        data = clientSocket.recv(2048).decode()
+        #catch OSError - occurs if you've logged out w server but continue talking
+        #with peers in p2p
+        except OSError: 
+            sys.exit() #close receive thread
+        
+        data = data.decode()
         d = data.split()
         #message from server approving a start private action
         #startPrivateAck <user> <socket> <port>
@@ -170,13 +174,15 @@ def receive():
             talkPrivateThread.start()
 
         elif (data == "LOG_OUT"):
-            #close the socket and end program
             clientSocket.close()
+            #if theres ongoing p2p connections message them that youre logging out
+            #for p in p2p:
+
+            # shut down program
             os._exit(0)
-            #threading.current_thread()._stop
-            #_thread.interrupt_main()
         
         else:
+            time.sleep(0.02)
             print('\n' + str(data))
 
 
@@ -238,20 +244,4 @@ recvThread.start()
 send()
 
 #clientSocket.close()
-
-    
-    
-    
-
-    # message = input().split()  # wait for the input
-    # # send the message back to server
-    # # wait for reply
-
-    # # prepare to exit. Send Unsubscribe message to server
-    # # clientSocket.sendto(message.encode(),(serverName, serverPort))
-    
-
-    # after finishing the loop close the socket
-
-
 
