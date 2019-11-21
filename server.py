@@ -20,7 +20,7 @@ def authenticate(usr, password):
 
 #function to notify when someone login/logout
 def presence_notifications(usr, action):
-    m = " > " + usr
+    m = usr
     if action == "login":
         m += " logged in"
     else:
@@ -117,7 +117,7 @@ def handle_request(connectionSocket, addr, usr):
                 
             else:
                 recipient = m[1]
-                mess = " > " + usr + ": "+ m[2]
+                mess = usr + ": "+ m[2]
 
                 #find the user
                 if recipient in logins and recipient != usr:
@@ -166,7 +166,7 @@ def handle_request(connectionSocket, addr, usr):
             if len(m) != 2:
                 invalid_command(connectionSocket)
             else:    
-                mess = " > " + usr + ": " + m[1]
+                mess = usr + ": " + m[1]
                 
                 #go through all online people
                 #if they don't block the current user trying to send - send
@@ -316,9 +316,14 @@ def ver_new_client(connectionSocket, addr):
                 
                 #now they logged in, send them any pending messages
                 pending = ""
+                first = False
                 if usr in pending_msg:
                     for m in pending_msg[usr]:
-                        pending += m + "\n"
+                        if first == False:
+                            pending += m + "\n"
+                            first = True
+                        else:
+                            pending += " > " + m + "\n"
                         
                 connectionSocket.send(pending.encode())
                 handle_request(connectionSocket, addr, usr)

@@ -243,7 +243,7 @@ while ( decoded != "SUCCESS"):
             print("Invalid login. Please try again")
             print("Username: "+usr)
             pas = input("Password: ")   
-            message = json.dumps({"username": usr, "password": pas, "privPort": port})  # serialise 
+            message = json.dumps({"username": usr, "password": pas, "privPort": privPort})  # serialise 
             clientSocket.send(message.encode())
         else: #blocked or "You're already logged in."
             print(decoded)
