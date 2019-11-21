@@ -27,7 +27,6 @@ def invalid_command(sock):
 def listenPrivate():
     global usr
 
-    print('listening on port:', privateSocket.getsockname()[1])
     while True:
         #accept connections from peers
         connectionSocket, addr = privateSocket.accept()
@@ -77,7 +76,6 @@ def handlePrivate(peerSocket, addr):
         #user logged off before executing stop private
         elif m[0] == "LOGOUT":
             peer = m[1]
-            print(peer + " logged out - private messaging disabled.")
             peerSocket.close()
             del p2p[peer]
             sys.exit()
@@ -242,7 +240,7 @@ while ( decoded != "Welcome! You can now start messaging!"):
         if (decoded == "Invalid username. Please try again"):
             login(privPort) #login and send to server
         elif (decoded == "Invalid login. Please try again"):
-            print("user is "+usr)
+            print("Username: "+usr)
             pas = input("Password: ")    
             message = json.dumps({"username": usr, "password": pas})  # serialise
             clientSocket.send(message.encode())
@@ -254,7 +252,6 @@ while ( decoded != "Welcome! You can now start messaging!"):
         decoded = clientSocket.recv(2048).decode()
 
 #successfully logged in:
-print("made it here")
 print(decoded)
 
 
@@ -270,6 +267,3 @@ recvThread.start()
 
 # function that sends to server
 send()
-
-#clientSocket.close()
-

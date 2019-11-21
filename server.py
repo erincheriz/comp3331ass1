@@ -35,6 +35,23 @@ f.close()
 def authenticate(usr, password):
     return (logins[usr]['pas'] == password)   
 
+#function to notify when someone login/logout
+def presence_notifications(usr, action):
+    m = " > " + usr
+    if action == "login":
+        m += " logged in"
+    else:
+        m += " logged out"
+    
+    # Blocked users also do not get presence notifications 
+    for c in clients:
+        if c == usr:
+            continue
+        if clients[c]['online'] == True and c not in logins[usr]['blocked']:
+            toSend = clients[c]['socket']
+            toSend.send(m.encode())
+
+
 #function to check if the usr is inactive
 def check_timeout():
     global timeout
@@ -49,6 +66,7 @@ def check_timeout():
             if (currT-lastT).total_seconds() >= timeout:
                 clients[c]['online'] = False
                 clients[c]['last_active'] = dt.datetime.now()
+                presence_notifications(c, "logout")
                 serverMessage = "LOG_OUT"
                 sock = clients[c]['socket']
                 sock.send(serverMessage.encode())
@@ -95,14 +113,13 @@ def handle_request(connectionSocket, addr, usr):
 
                 # other blocked user - server should NOT provide ip and port + give error
                 elif usr in logins[other]['blocked']:
-                    serverMessage = " > IP and Port number cannot be obtained."
+                    serverMessage = " > IP and Port number cannot be obtained because this user has blocked you."
 
                 # Client should obtain IP and port of <user> from server
                 else:
                     ip = clients[other]['addr'][0]
                     port = clients[other]['privPort']
 
-                    print(usr + " is trying to connect to "+ str(port)) #debug
                     #send back the message in format
                     #startPrivateAck <user> <IP> <port>
                     serverMessage = "startPrivateAck " + other + " " + ip + " " + str(port)
@@ -118,9 +135,6 @@ def handle_request(connectionSocket, addr, usr):
             else:
                 recipient = m[1]
                 mess = " > " + usr + ": "+ m[2]
-
-                print(recipient) #debug
-                print(mess) #debug
 
                 #find the user
                 if recipient in logins and recipient != usr:
@@ -191,20 +205,23 @@ def handle_request(connectionSocket, addr, usr):
             if len(m) != 2:
                 invalid_command(connectionSocket)
             else: 
-                sec = int(m[1])
-                #find the time that you're looking for
-                since_time = dt.datetime.now() - dt.timedelta(seconds=sec)
+                try:
+                    sec = int(m[1])
+                    #find the time that you're looking for
+                    since_time = dt.datetime.now() - dt.timedelta(seconds=sec)
 
-                #send anyone active since that^ time
-                serverMessage = ""
-                for p in clients:
-                    if p == usr: #skip references of self
-                        continue
-                    
-                    if clients[p]['last_active'] >= since_time or clients[p]['online'] == True:
-                        serverMessage += ' > ' + p + '\n'
+                    #send anyone active since that^ time
+                    serverMessage = ""
+                    for p in clients:
+                        if p == usr: #skip references of self
+                            continue
                         
-                connectionSocket.send(serverMessage.encode()) 
+                        if clients[p]['last_active'] >= since_time or clients[p]['online'] == True:
+                            serverMessage += ' > ' + p + '\n'
+                            
+                    connectionSocket.send(serverMessage.encode()) 
+                except ValueError: #if the time provided with whoelsesince is not a valid integer:
+                    invalid_command(connectionSocket)                
                     
         #block <user>
         elif (parsed[0] == "block"):
@@ -239,13 +256,7 @@ def handle_request(connectionSocket, addr, usr):
         #logout
         elif (message == "logout"):
             clients[usr]['online'] = False
-            m = " > " + usr + " logged out"
-            # Blocked users also do not get presence notifications 
-            for c in clients:
-                if clients[c]['online'] == True and c not in logins[usr]['blocked']:
-                    toSend = clients[c]['socket']
-                    toSend.send(m.encode())
-            
+            presence_notifications(usr, "logout")
             serverMessage = "LOG_OUT"
             connectionSocket.send(serverMessage.encode())
             connectionSocket.close()
@@ -311,24 +322,19 @@ def ver_new_client(connectionSocket, addr):
                 clients[usr] = {'online': True, 'socket': connectionSocket, 'addr': addr, 'last_active': time, 'login': time, 'privPort': port}
                 #let the other peers know that this client logged in 
                 # Blocked users do not get presence notifications 
-                m = usr + " logged in"
-                for c in clients:
-                    if c == usr:
-                        continue
-                    if clients[c]['online'] == True and usr not in logins[c]['blocked']:
-                        toSend = clients[c]['socket']
-                        toSend.send(m.encode())
+                presence_notifications(usr, "login")
                 
                 #now they logged in, send them any pending messages
+                pending = ""
                 if usr in pending_msg:
                     for m in pending_msg[usr]:
-                        connectionSocket.send(m.encode())
-
+                        pending += m + "\n"
+                        
+                connectionSocket.send(pending.encode())
                 handle_request(connectionSocket, addr, usr)
 
                 
             elif logins[usr]['tries'] < 2: #wrong password but havent exhausted tries
-                print("wrong")
                 serverMessage = "Invalid login. Please try again"
                 connectionSocket.send(serverMessage.encode())
                 logins[usr]['tries'] += 1
@@ -358,7 +364,6 @@ serverSocket = socket(AF_INET, SOCK_STREAM)
 serverSocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
 serverSocket.bind(('localhost', serverPort))
 serverSocket.listen(1)
-print("starting here")
 
 server_start = dt.datetime.now()
 #handle timeout
@@ -373,8 +378,3 @@ while True:
     new_client = threading.Thread(name="NewClient", target=ver_new_client, args=(connectionSocket, addr))
     new_client.daemon=True #daemon thread will shut down immediately when program exits
     new_client.start()
-
-    
-    
-
-    #time.sleep(0.1)
