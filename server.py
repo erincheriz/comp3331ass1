@@ -56,7 +56,7 @@ def check_timeout():
                 sock.close()
             
 def invalid_command(sock):
-    serverMessage = " > Please type a valid command."
+    serverMessage = "Please type a valid command."
     sock.send(serverMessage.encode())
 
 
@@ -84,19 +84,19 @@ def handle_request(connectionSocket, addr, usr):
                 other = m[1]
                 #other is self
                 if usr == other:
-                    serverMessage = " > Error. Cannot message self"
+                    serverMessage = "Error. Cannot message self"
 
                 #other doesnt exist
                 elif other not in logins:
-                    serverMessage = " > Error. Invalid user provided."
+                    serverMessage = "Error. Invalid user provided."
 
                 #other not online
                 elif other not in clients or clients[other]['online']==False:
-                    serverMessage = " > Error. Cannot establish a connection with user."
+                    serverMessage = "Error. Cannot establish a connection with user."
 
                 # other blocked user - server should NOT provide ip and port + give error
                 elif usr in logins[other]['blocked']:
-                    serverMessage = " > IP and Port number cannot be obtained because this user has blocked you."
+                    serverMessage = "IP and Port number cannot be obtained because this user has blocked you."
 
                 # Client should obtain IP and port of <user> from server
                 else:
@@ -123,7 +123,7 @@ def handle_request(connectionSocket, addr, usr):
                 if recipient in logins and recipient != usr:
                     #if they're blocked then dont send message
                     if usr in logins[recipient]['blocked']:
-                        serverMessage = " > You can no longer send messages to this person."
+                        serverMessage = "You can no longer send messages to this person."
                         connectionSocket.send(serverMessage.encode())
                     
                     #check if they're online - send message to them
@@ -142,15 +142,21 @@ def handle_request(connectionSocket, addr, usr):
                 
                 #user doesnt exist or user is self
                 else:
-                    serverMessage = " > Error. Invalid user"   
+                    serverMessage = "Error. Invalid user"   
                     connectionSocket.send(serverMessage.encode()) 
         
         #whoelse
         elif (message == "whoelse"):  
             serverMessage = ""
+            first = False
             for k in clients:
                 if k != usr and clients[k]['online'] == True:
-                    serverMessage += ' > '+ k + '\n'
+                    if first == False:
+                        serverMessage += k + '\n'
+                        first = True
+                    else:
+                        serverMessage += ' > '+ k + '\n'
+                    
 
             connectionSocket.send(serverMessage.encode()) 
         
@@ -179,7 +185,7 @@ def handle_request(connectionSocket, addr, usr):
                 #if the flag is true, that means the message was unable to be sent to all
                 #server should send message back
                 if flag == True:
-                    serverMessage = " > Your message could not be delivered to some recipients"
+                    serverMessage = "Your message could not be delivered to some recipients"
                     connectionSocket.send(serverMessage.encode()) 
         
         #whoelsesince <time>
@@ -195,14 +201,18 @@ def handle_request(connectionSocket, addr, usr):
 
                     #send anyone active since that^ time
                     serverMessage = ""
+                    first = False
                     for p in clients:
                         if p == usr: #skip references of self
                             continue
-                        
                         if clients[p]['last_active'] >= since_time or clients[p]['online'] == True:
-                            serverMessage += ' > ' + p + '\n'
-                            
+                            if first == False:
+                                serverMessage += p + '\n'
+                                first = True
+                            else: 
+                                serverMessage += ' > ' + p + '\n'
                     connectionSocket.send(serverMessage.encode()) 
+                
                 except ValueError: #if the time provided with whoelsesince is not a valid integer:
                     invalid_command(connectionSocket)                
                     
@@ -212,12 +222,12 @@ def handle_request(connectionSocket, addr, usr):
             if len(m) != 2:
                 invalid_command(connectionSocket)
             elif m[1] == usr:
-                serverMessage = " > Error. Cannot block self"
+                serverMessage = "Error. Cannot block self"
             elif m[1] not in logins:
-                serverMessage = " > Error. Invalid username"
+                serverMessage = "Error. Invalid username"
             elif m[1] not in logins[usr]['blocked']:
                 logins[usr]['blocked'].append(m[1])
-                serverMessage = " > " + m[1] + " is now blocked."
+                serverMessage = m[1] + " is now blocked."
             
             connectionSocket.send(serverMessage.encode()) 
 
@@ -227,12 +237,12 @@ def handle_request(connectionSocket, addr, usr):
             if len(m) != 2:
                 invalid_command(connectionSocket)
             elif m[1] == usr:
-                serverMessage = " > Error. Cannot unblock self"
+                serverMessage = "Error. Cannot unblock self"
             elif m[1] in logins[usr]['blocked']:
                 logins[usr]['blocked'].remove(m[1])
-                serverMessage = " > " + m[1] + " is unblocked."
+                serverMessage = m[1] + " is unblocked."
             else:
-                serverMessage = " > Error. "+ m[1] + " was not blocked."
+                serverMessage = "Error. "+ m[1] + " was not blocked."
             
             connectionSocket.send(serverMessage.encode()) 
         
@@ -287,7 +297,7 @@ def ver_new_client(connectionSocket, addr):
         if logins.get(usr) != None:
             #check if the password is right
             if (authenticate(usr, pas) and logins[usr]['tries'] < 3):
-                serverMessage = "Welcome! You can now start messaging!"
+                serverMessage = "SUCCESS"
                 connectionSocket.send(serverMessage.encode())
                 
                 logins[usr]['tries'] = 0 #reset their no. of tries
@@ -315,7 +325,7 @@ def ver_new_client(connectionSocket, addr):
 
                 
             elif logins[usr]['tries'] < 2: #wrong password but havent exhausted tries
-                serverMessage = "Invalid login. Please try again"
+                serverMessage = "INVALID_PAS"
                 connectionSocket.send(serverMessage.encode())
                 logins[usr]['tries'] += 1
             
@@ -329,7 +339,7 @@ def ver_new_client(connectionSocket, addr):
         
         #username doesnt exist in backend
         else:
-            serverMessage = "Invalid username. Please try again"
+            serverMessage = "INVALID_USR"
             connectionSocket.send(serverMessage.encode())
     
 ###### MAIN STARTS HERE

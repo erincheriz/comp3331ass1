@@ -207,7 +207,7 @@ def receive():
             os._exit(0)
         
         else:
-            print(str(data))
+            print(" > " + str(data))
             time.sleep(0.05)
             
 
@@ -235,16 +235,18 @@ receivedMessage = clientSocket.recv(2048)
 decoded = receivedMessage.decode()
 
 #while the server keeps asking you to login, try logging in
-while ( decoded != "Welcome! You can now start messaging!"):
-        print(decoded)
-        if (decoded == "Invalid username. Please try again"):
+while ( decoded != "SUCCESS"):
+        if (decoded == "INVALID_USR"):
+            print("Invalid username. Please try again")
             login(privPort) #login and send to server
-        elif (decoded == "Invalid login. Please try again"):
+        elif (decoded == "INVALID_PAS"):
+            print("Invalid login. Please try again")
             print("Username: "+usr)
-            pas = input("Password: ")    
-            message = json.dumps({"username": usr, "password": pas})  # serialise
+            pas = input("Password: ")   
+            message = json.dumps({"username": usr, "password": pas, "privPort": port})  # serialise 
             clientSocket.send(message.encode())
         else: #blocked or "You're already logged in."
+            print(decoded)
             clientSocket.close()
             exit()
 
@@ -252,7 +254,7 @@ while ( decoded != "Welcome! You can now start messaging!"):
         decoded = clientSocket.recv(2048).decode()
 
 #successfully logged in:
-print(decoded)
+print("Welcome! You can now start messaging!")
 
 
 #start a new thread to handle listening for private messages
