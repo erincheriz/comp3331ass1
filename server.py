@@ -10,27 +10,10 @@ import json
 import sys
 from queue import Queue 
 
-
-t_lock=threading.Condition()
-#will store clients info in this list
-clients={} #dict of online users
+clients={} #will store clients who log on info in this dict
 log_blocked={} #dict of users who are currently blocked because failed to login
 logins = {} #dict of all users, passwords, tries and people they block
 pending_msg = {} #dict of users and pending messages to be sent
-
-# would communicate with clients after every second
-UPDATE_INTERVAL= 1
-timeout=False
-
-#create a dictionary of the logins at the credentials.txt
-
-with open("credentials.txt") as f:
-    #content = f.readlines()
-    for line in f:
-        tmp = line.split()
-        logins[tmp[0]] = {'pas': tmp[1], 'tries': 0, 'blocked': []} #key = username, value = {password, tries}
-f.close()
-
 
 def authenticate(usr, password):
     return (logins[usr]['pas'] == password)   
@@ -267,7 +250,6 @@ def handle_request(connectionSocket, addr, usr):
             invalid_command(connectionSocket)
 
 def ver_new_client(connectionSocket, addr):
-    global t_lock
     global clients
     global serverSocket
 
@@ -283,7 +265,6 @@ def ver_new_client(connectionSocket, addr):
         if usr in clients and clients[usr]['online']:
             serverMessage = "You're already logged in."
             connectionSocket.send(serverMessage.encode())
-            #break
             connectionSocket.close()
             sys.exit()
         
@@ -306,7 +287,6 @@ def ver_new_client(connectionSocket, addr):
         if logins.get(usr) != None:
             #check if the password is right
             if (authenticate(usr, pas) and logins[usr]['tries'] < 3):
-                #correct password
                 serverMessage = "Welcome! You can now start messaging!"
                 connectionSocket.send(serverMessage.encode())
                 
@@ -314,14 +294,14 @@ def ver_new_client(connectionSocket, addr):
 
                 #client dictionary stores:
                     # Boolean - still online
-                    # Client socekt and port
+                    # Client socket, ip, port
                     # Timeactive
                     # Login
                     # privPort they can be contacted on
                 time = dt.datetime.now()
                 clients[usr] = {'online': True, 'socket': connectionSocket, 'addr': addr, 'last_active': time, 'login': time, 'privPort': port}
+
                 #let the other peers know that this client logged in 
-                # Blocked users do not get presence notifications 
                 presence_notifications(usr, "login")
                 
                 #now they logged in, send them any pending messages
@@ -352,13 +332,19 @@ def ver_new_client(connectionSocket, addr):
             serverMessage = "Invalid username. Please try again"
             connectionSocket.send(serverMessage.encode())
     
-#python server.py server_port block_duration timeout
+###### MAIN STARTS HERE
 
-#Server will run on this port
+#create a dictionary of the logins at the credentials.txt
+with open("credentials.txt") as f:
+    for line in f:
+        tmp = line.split()
+        logins[tmp[0]] = {'pas': tmp[1], 'tries': 0, 'blocked': []} #key = username, value = {password, tries, people they block}
+f.close()
+
+#python server.py server_port block_duration timeout
 serverPort = int(sys.argv[1])
 block_duration = int(sys.argv[2])
 timeout = int(sys.argv[3])
-
 
 serverSocket = socket(AF_INET, SOCK_STREAM)
 serverSocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
@@ -370,6 +356,7 @@ server_start = dt.datetime.now()
 handle_timeout = threading.Thread(name="Timeout", target=check_timeout)
 handle_timeout.daemon=True
 handle_timeout.start()
+
 #this is the main thread
 while True:
     #check for client
